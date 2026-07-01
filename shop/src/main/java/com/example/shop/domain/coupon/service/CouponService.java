@@ -37,8 +37,8 @@ public class CouponService {
                 .toList();
     }
 
-    public Coupon getEntityByIdAndUser(Long couponId, Long userId) {
-        return couponRepository.findByIdAndUserId(couponId, userId)
-                .orElseThrow(() -> new NoSuchElementException("보유한 쿠폰이 아닙니다."));
+    public Coupon getEntity(Long couponId) {
+        return couponRepository.findById(couponId)
+                .orElseThrow(() -> new NoSuchElementException("쿠폰을 찾을 수 없습니다."));
     }
 }

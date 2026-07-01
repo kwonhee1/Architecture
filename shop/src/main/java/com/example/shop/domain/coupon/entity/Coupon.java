@@ -46,16 +46,22 @@ public class Coupon {
         this.used = false;
     }
 
-    public boolean isExpired() {
-        return LocalDateTime.now().isAfter(this.expiresAt);
-    }
-
-    public void use() {
+    public int applyTo(int orderPrice, User user) {
+        if (!this.user.getId().equals(user.getId())) {
+            throw new IllegalStateException("보유한 쿠폰이 아닙니다.");
+        }
         if (this.used) {
             throw new IllegalStateException("이미 사용된 쿠폰입니다.");
         }
+        if (LocalDateTime.now().isAfter(this.expiresAt)) {
+            throw new IllegalStateException("만료된 쿠폰입니다.");
+        }
+        if (orderPrice < this.minOrderAmount) {
+            throw new IllegalStateException("최소 주문 금액을 충족하지 않아 쿠폰을 사용할 수 없습니다.");
+        }
         this.used = true;
         this.usedAt = LocalDateTime.now();
+        return this.discountAmount;
     }
 
     @Builder

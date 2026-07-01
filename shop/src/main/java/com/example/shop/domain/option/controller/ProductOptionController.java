@@ -33,8 +33,9 @@ public class ProductOptionController {
     @PutMapping("/{optionId}")
     public ResponseEntity<ProductOptionResponse> update(@PathVariable Long productId,
                                                         @PathVariable Long optionId,
-                                                        @Valid @RequestBody ProductOptionRequest request) {
-        return ResponseEntity.ok(optionService.update(optionId, request));
+                                                        @Valid @RequestBody ProductOptionRequest request,
+                                                        @RequestAttribute Long loginUserId) {
+        return ResponseEntity.ok(optionService.update(optionId, request, loginUserId));
     }
 
     @DeleteMapping("/{optionId}")

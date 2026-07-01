@@ -1,5 +1,7 @@
 package com.example.shop.domain.product.service;
 
+import com.example.shop.domain.option.entity.ProductOption;
+import com.example.shop.domain.product.PurchaseResult;
 import com.example.shop.domain.product.dto.ProductCreateRequest;
 import com.example.shop.domain.product.dto.ProductResponse;
 import com.example.shop.domain.product.entity.Product;
@@ -61,5 +63,12 @@ public class ProductService {
     public Product getProduct(Long productId) {
         return productRepository.findById(productId)
                 .orElseThrow(() -> new NoSuchElementException("상품을 찾을 수 없습니다."));
+    }
+
+    public PurchaseResult purchase(Product product, ProductOption option, int count) {
+        if (option != null) option.decreaseStock(count);
+        int price = (product.getPrice() + (option != null ? option.getAdditionalPrice() : 0)) * count;
+
+        return new PurchaseResult(product, option, count, price);
     }
 }
