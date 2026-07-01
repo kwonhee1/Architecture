@@ -41,12 +41,6 @@ public class ProductService {
                 .toList();
     }
 
-    public ProductResponse getOne(Long productId) {
-        return productRepository.findById(productId)
-                .map(ProductResponse::from)
-                .orElseThrow(() -> new NoSuchElementException("상품을 찾을 수 없습니다."));
-    }
-
     @Transactional
     public ProductResponse update(Long productId, Long userId, ProductCreateRequest request) {
         Product product = productRepository.findById(productId)
@@ -64,7 +58,7 @@ public class ProductService {
         product.changeStatus(ProductStatus.DISCONTINUED);
     }
 
-    public Product getEntity(Long productId) {
+    public Product getProduct(Long productId) {
         return productRepository.findById(productId)
                 .orElseThrow(() -> new NoSuchElementException("상품을 찾을 수 없습니다."));
     }

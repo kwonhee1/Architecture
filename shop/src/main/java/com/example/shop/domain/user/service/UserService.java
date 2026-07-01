@@ -40,9 +40,13 @@ public class UserService {
         return user;
     }
 
-    public UserResponse getUser(Long userId) {
+    // can use other services
+    public User getUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NoSuchElementException("사용자를 찾을 수 없습니다."));
-        return UserResponse.from(user);
+
+        // todo : add other logic (ex soft delete, ...)
+
+        return user;
     }
 }

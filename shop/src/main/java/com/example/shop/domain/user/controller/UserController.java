@@ -48,6 +48,6 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me(@RequestAttribute Long loginUserId) {
-        return ResponseEntity.ok(userService.getUser(loginUserId));
+        return ResponseEntity.ok(UserResponse.from(userService.getUser(loginUserId)));
     }
 }

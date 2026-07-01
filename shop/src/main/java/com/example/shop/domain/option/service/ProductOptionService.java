@@ -23,8 +23,9 @@ public class ProductOptionService {
 
     @Transactional
     public ProductOptionResponse create(Long productId, Long userId, ProductOptionRequest request) {
-        Product product = productService.getEntity(productId);
+        Product product = productService.getProduct(productId);
         product.validateCreator(userId);
+
         ProductOption option = ProductOption.builder()
                 .product(product)
                 .name(request.name())
@@ -41,9 +42,12 @@ public class ProductOptionService {
     }
 
     @Transactional
-    public ProductOptionResponse update(Long optionId, ProductOptionRequest request) {
+    public ProductOptionResponse update(Long optionId, ProductOptionRequest request, Long userId) {
         ProductOption option = optionRepository.findById(optionId)
                 .orElseThrow(() -> new NoSuchElementException("옵션을 찾을 수 없습니다."));
+        Product product = option.getProduct();
+        product.validateCreator(userId);
+
         option.update(request.name(), request.additionalPrice(), request.stock());
         return ProductOptionResponse.from(option);
     }
