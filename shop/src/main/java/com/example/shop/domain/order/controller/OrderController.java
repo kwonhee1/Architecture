@@ -21,7 +21,7 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<OrderResponse> create(@Valid @RequestBody OrderCreateRequest request,
                                                 @RequestAttribute Long loginUserId) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(orderService.create(loginUserId, request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(OrderResponse.from(orderService.create(loginUserId, request)));
     }
 
     @GetMapping
