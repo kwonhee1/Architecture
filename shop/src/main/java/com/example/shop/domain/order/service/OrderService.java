@@ -22,7 +22,6 @@ import java.util.NoSuchElementException;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class OrderService {
 
     private final OrderRepository orderRepository;
@@ -47,14 +46,14 @@ public class OrderService {
         int discountAmount = 0;
         if (request.couponId() != null) {
             coupon = couponService.getEntityByIdAndUser(request.couponId(), userId);
-            if (coupon.isExpired()) {
+            if (coupon.isExpired()) { // coupon의 로직이 흘러 들어옴
                 throw new IllegalStateException("만료된 쿠폰입니다.");
             }
             if (totalAmount < coupon.getMinOrderAmount()) {
                 throw new IllegalStateException("최소 주문 금액을 충족하지 않아 쿠폰을 사용할 수 없습니다.");
             }
             discountAmount = coupon.getDiscountAmount();
-            coupon.use();
+            coupon.use(); // coupon 사용 로직이 들어옴
         }
 
         Order order = Order.builder()
@@ -71,7 +70,7 @@ public class OrderService {
             int unitPrice = product.getPrice();
             if (itemReq.optionId() != null) {
                 option = optionService.getEntity(itemReq.optionId());
-                option.decreaseStock(itemReq.quantity());
+                option.decreaseStock(itemReq.quantity()); // decrease 로직은 어면히 product, option의 domain 로직임
                 unitPrice += option.getAdditionalPrice();
             }
             order.getItems().add(OrderItem.builder()
@@ -102,7 +101,7 @@ public class OrderService {
     public OrderResponse cancel(Long orderId, Long userId) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new NoSuchElementException("주문을 찾을 수 없습니다."));
-        order.cancel();
+        order.cancel(); // coupon roll back은?
         return OrderResponse.from(order);
     }
 }
