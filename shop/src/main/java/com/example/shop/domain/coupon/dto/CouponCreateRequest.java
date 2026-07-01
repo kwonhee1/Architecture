@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 public record CouponCreateRequest(
+        @NotNull Long userId,
         @NotBlank String name,
         @Min(1) int discountAmount,
         @Min(0) int minOrderAmount,

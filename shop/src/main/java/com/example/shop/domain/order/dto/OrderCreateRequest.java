@@ -7,5 +7,5 @@ import java.util.List;
 
 public record OrderCreateRequest(
         @NotEmpty @Valid List<OrderItemRequest> items,
-        Long userCouponId
+        Long couponId
 ) {}

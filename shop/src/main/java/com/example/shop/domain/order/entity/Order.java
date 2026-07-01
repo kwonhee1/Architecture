@@ -1,6 +1,6 @@
 package com.example.shop.domain.order.entity;
 
-import com.example.shop.domain.coupon.entity.UserCoupon;
+import com.example.shop.domain.coupon.entity.Coupon;
 import com.example.shop.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
@@ -27,8 +27,8 @@ public class Order {
     private List<OrderItem> items = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_coupon_id")
-    private UserCoupon userCoupon;
+    @JoinColumn(name = "coupon_id")
+    private Coupon coupon;
 
     @Column(nullable = false)
     private int totalAmount;
@@ -60,9 +60,9 @@ public class Order {
     }
 
     @Builder
-    public Order(User user, UserCoupon userCoupon, int totalAmount, int discountAmount) {
+    public Order(User user, Coupon coupon, int totalAmount, int discountAmount) {
         this.user = user;
-        this.userCoupon = userCoupon;
+        this.coupon = coupon;
         this.totalAmount = totalAmount;
         this.discountAmount = discountAmount;
         this.finalAmount = totalAmount - discountAmount;

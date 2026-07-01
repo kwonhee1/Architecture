@@ -2,7 +2,6 @@ package com.example.shop.domain.coupon.controller;
 
 import com.example.shop.domain.coupon.dto.CouponCreateRequest;
 import com.example.shop.domain.coupon.dto.CouponResponse;
-import com.example.shop.domain.coupon.dto.UserCouponResponse;
 import com.example.shop.domain.coupon.service.CouponService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,19 +22,8 @@ public class CouponController {
         return ResponseEntity.status(HttpStatus.CREATED).body(couponService.create(request));
     }
 
-    @GetMapping("/api/coupons")
-    public ResponseEntity<List<CouponResponse>> getAll() {
-        return ResponseEntity.ok(couponService.getAll());
-    }
-
-    @PostMapping("/api/coupons/{couponId}/issue")
-    public ResponseEntity<UserCouponResponse> issue(@PathVariable Long couponId,
-                                                    @RequestAttribute Long loginUserId) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(couponService.issue(couponId, loginUserId));
-    }
-
     @GetMapping("/api/users/me/coupons")
-    public ResponseEntity<List<UserCouponResponse>> getMyCoupons(@RequestAttribute Long loginUserId) {
+    public ResponseEntity<List<CouponResponse>> getMyCoupons(@RequestAttribute Long loginUserId) {
         return ResponseEntity.ok(couponService.getMyCoupons(loginUserId));
     }
 }
