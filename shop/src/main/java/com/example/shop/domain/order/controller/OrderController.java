@@ -2,6 +2,7 @@ package com.example.shop.domain.order.controller;
 
 import com.example.shop.domain.order.dto.OrderCreateRequest;
 import com.example.shop.domain.order.dto.OrderResponse;
+import com.example.shop.domain.order.service.OrderFacadeService;
 import com.example.shop.domain.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +18,12 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderFacadeService orderFacadeService;
 
     @PostMapping
     public ResponseEntity<OrderResponse> create(@Valid @RequestBody OrderCreateRequest request,
                                                 @RequestAttribute Long loginUserId) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(OrderResponse.from(orderService.create(loginUserId, request)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(OrderResponse.from(orderFacadeService.create(loginUserId, request)));
     }
 
     @GetMapping

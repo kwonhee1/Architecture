@@ -1,6 +1,8 @@
 package com.example.shop.domain.product.service;
 
 import com.example.shop.domain.option.entity.ProductOption;
+import com.example.shop.domain.option.repository.ProductOptionRepository;
+import com.example.shop.domain.order.dto.OrderItemRequest;
 import com.example.shop.domain.product.PurchaseResult;
 import com.example.shop.domain.product.dto.ProductCreateRequest;
 import com.example.shop.domain.product.dto.ProductResponse;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -22,6 +25,7 @@ import java.util.NoSuchElementException;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ProductOptionRepository optionRepository;
     private final UserRepository userRepository;
 
     @Transactional
@@ -65,7 +69,20 @@ public class ProductService {
                 .orElseThrow(() -> new NoSuchElementException("상품을 찾을 수 없습니다."));
     }
 
-    public PurchaseResult purchase(Product product, ProductOption option, int count) {
+    public List<PurchaseResult> purchase(List<OrderItemRequest> request) {
+        List<PurchaseResult> purchaseResults = new ArrayList<>();
+
+        for (OrderItemRequest itemReq : request) {
+            Product product = getProduct(itemReq.productId());
+            ProductOption option = optionRepository.findById(itemReq.optionId()).get();
+            PurchaseResult purchaseResult = purchase(product, option, itemReq.quantity());
+            purchaseResults.add(purchaseResult);
+        }
+
+        return purchaseResults;
+    }
+
+    private PurchaseResult purchase(Product product, ProductOption option, int count) {
         if (option != null) option.decreaseStock(count);
         int price = (product.getPrice() + (option != null ? option.getAdditionalPrice() : 0)) * count;
 
