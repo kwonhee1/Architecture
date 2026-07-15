@@ -1,0 +1,1446 @@
+###############################################################################
+# CLI 테스트 시나리오 (.http)
+#
+# - 모든 아키텍처 구현이 공통으로 통과해야 하는 시나리오.
+# - API 계약: shopping-api.yaml / 기능 규칙: 기능명세서 (각 조건을 전수 검증)
+#
+# 실행 규칙
+#  - 각 시나리오(### ==== S## ====)는 자기완결이다: 필요한 user/상품/옵션/포인트를
+#    시나리오 안에서 직접 생성한다. 앞 시나리오 상태에 의존하지 않는다.
+#  - 로그인(POST /users/login) 성공 시 UserId 쿠키가 발급된다. 쿠키는 저장했다가
+#    이후 인증 요청에 사용한다. 한 시나리오 안에서 액터(구매자/판매자/제3자)가
+#    바뀌면 그 액터로 재로그인한 뒤 요청한다.
+#  - `# @name x` 로 이름 붙인 응답의 값은 {{x.response.body.필드}} 로 다음 요청에 쓴다.
+#    (id 등 생성 값은 응답 body에서 받아 넘긴다)
+#  - `# 기대:` 주석이 각 요청의 성공 판정 기준이다.
+#
+# 주의
+#  - 각 test 케이스의 email은 서로 겹치지 않지만, 같은 DB에 재실행하면 이전 실행의
+#    user와 겹쳐 409가 난다. 재실행 시에는 DB를 초기화한다.
+#  - db/env를 직접 읽지 말고 api 응답만으로 검증한다.
+###############################################################################
+
+@host = http://localhost:8080
+
+###############################################################################
+# USER
+###############################################################################
+
+### ==== S01 회원가입 정상 + 회원가입 쿠폰 자동 발급 (user-01, coupon-01) ====
+# @name s01_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s01@test.com", "password": "pw", "name": "S01유저" }
+
+# 기대: 201 (본문 없음)
+
+###
+# @name s01_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s01@test.com", "password": "pw" }
+
+# 기대: 200 + Set-Cookie: UserId=...
+
+###
+GET {{host}}/coupons
+
+# 기대: 200, 배열에 { name: "회원 가입 쿠폰", discountAmount: 1000 } 1개 (자동 발급 확인)
+
+
+### ==== S02 회원가입 email 중복 → 409 (user-01: email 중복 확인) ====
+# @name s02_first
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s02@test.com", "password": "pw", "name": "S02" }
+# 기대: 201
+
+###
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s02@test.com", "password": "pw2", "name": "S02중복" }
+# 기대: 409 (이미 존재하는 email)
+
+
+### ==== S03 회원가입 필수값 누락 → 400 ====
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s03@test.com", "password": "pw" }
+# 기대: 400 (name 누락)
+
+
+### ==== S04 로그인 password 불일치 → 401 (user-02) ====
+# @name s04_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s04@test.com", "password": "pw", "name": "S04" }
+# 기대: 201
+
+###
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s04@test.com", "password": "wrong" }
+# 기대: 401
+
+
+### ==== S05 로그인 없는 email → 401 ====
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "no-such-user@test.com", "password": "pw" }
+# 기대: 401
+
+
+### ==== S06 회원 정보 조회 정상 (user-03: password 미반환) ====
+# @name s06_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s06@test.com", "password": "pw", "name": "S06유저" }
+# 기대: 201
+
+###
+# @name s06_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s06@test.com", "password": "pw" }
+# 기대: 200 + 쿠키
+
+###
+GET {{host}}/users/me
+# 기대: 200, { name: "S06유저", point: 0 }. password 필드 없음
+
+
+### ==== S07 회원 정보 조회 미인증 → 401 ====
+GET {{host}}/users/me
+Cookie:
+# 기대: 401 (UserId 쿠키 없음)
+
+
+### ==== S08 포인트 충전 정상 (user-04) ====
+# @name s08_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s08@test.com", "password": "pw", "name": "S08" }
+###
+# @name s08_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s08@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 10000 }
+# 기대: 200, { name: "S08", point: 10000 }
+
+
+### ==== S09 포인트 충전 <= 0 → 400 (충전 포인트 > 0) ====
+# @name s09_login
+# (S08 계정 재사용: 재로그인)
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s08@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 0 }
+# 기대: 400
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": -100 }
+# 기대: 400
+
+
+### ==== S10 포인트 충전 미인증 → 401 ====
+POST {{host}}/users/me/points
+Content-Type: application/json
+Cookie:
+
+{ "point": 1000 }
+# 기대: 401
+
+
+###############################################################################
+# COUPON
+###############################################################################
+
+### ==== S11 쿠폰 리스트 미인증 → 401 (coupon-02) ====
+GET {{host}}/coupons
+Cookie:
+# 기대: 401
+# (정상 조회/사용 후 소진/취소 후 복원은 ORDER 시나리오에서 검증)
+
+
+###############################################################################
+# PRODUCT
+###############################################################################
+
+### ==== S12 상품 등록 정상 + 기본 옵션 자동 생성 (product-01) ====
+# @name s12_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s12@test.com", "password": "pw", "name": "S12판매자" }
+###
+# @name s12_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s12@test.com", "password": "pw" }
+###
+# @name s12_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "러닝화", "price": 50000 }
+# 기대: 201, { id, description:"러닝화", price:50000, creator:{ name:"S12판매자" } }
+###
+GET {{host}}/products/{{s12_product.response.body.id}}
+# 기대: 200, options 배열에 기본 옵션 { description:"기본 옵션", additionalPrice:0, stock:0 } 포함
+
+
+### ==== S13 상품 등록 price <= 0 → 400 (판매 금액 > 0) ====
+# @name s13_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s12@test.com", "password": "pw" }
+###
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "무료상품", "price": 0 }
+# 기대: 400
+
+
+### ==== S14 상품 등록 미인증 → 401 ====
+POST {{host}}/products
+Content-Type: application/json
+Cookie:
+
+{ "description": "x", "price": 1000 }
+# 기대: 401
+
+
+### ==== S15 상품 수정 정상 - 설명/금액 (order 없음) (product-02) ====
+# @name s15_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s15@test.com", "password": "pw", "name": "S15판매자" }
+###
+# @name s15_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s15@test.com", "password": "pw" }
+###
+# @name s15_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "구버전", "price": 10000 }
+###
+# 수정할 값만 전송 (null 허용): 설명만
+PATCH {{host}}/products/{{s15_product.response.body.id}}
+Content-Type: application/json
+
+{ "description": "신버전" }
+# 기대: 200, description "신버전", price 10000 유지
+###
+# order 없으므로 금액 수정 가능
+PATCH {{host}}/products/{{s15_product.response.body.id}}
+Content-Type: application/json
+
+{ "price": 20000 }
+# 기대: 200, price 20000
+
+
+### ==== S16 상품 수정 price <= 0 → 400 ====
+# @name s16_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s15@test.com", "password": "pw" }
+###
+PATCH {{host}}/products/{{s15_product.response.body.id}}
+Content-Type: application/json
+
+{ "price": 0 }
+# 기대: 400
+
+
+### ==== S17 상품 수정 - 생성자 아님 → 403 ====
+# 제3자 생성
+# @name s17_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s17other@test.com", "password": "pw", "name": "제3자" }
+###
+# @name s17_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s17other@test.com", "password": "pw" }
+###
+PATCH {{host}}/products/{{s15_product.response.body.id}}
+Content-Type: application/json
+
+{ "description": "남의상품수정시도" }
+# 기대: 403
+
+
+### ==== S18 상품 수정 미인증 → 401 ====
+PATCH {{host}}/products/{{s15_product.response.body.id}}
+Content-Type: application/json
+Cookie:
+
+{ "description": "x" }
+# 기대: 401
+
+
+### ==== S19 상품 리스트 조회 (공개) (product-03) ====
+GET {{host}}/products
+# 기대: 200, 판매중 상품 배열 (옵션 정보 미포함). 인증 불필요
+
+
+### ==== S20 상품 상세 조회 + 없는 상품 404 (product-04) ====
+GET {{host}}/products/{{s12_product.response.body.id}}
+# 기대: 200, 옵션 리스트 포함. 인증 불필요
+###
+GET {{host}}/products/99999999
+# 기대: 404
+
+
+### ==== S21 내 상품 리스트 조회 - 타인 상품 제외 (product-05) ====
+# 판매자 A
+# @name s21a_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s21a@test.com", "password": "pw", "name": "S21A" }
+###
+# @name s21a_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s21a@test.com", "password": "pw" }
+###
+# @name s21a_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "A의상품", "price": 1000 }
+###
+# 판매자 B
+# @name s21b_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s21b@test.com", "password": "pw", "name": "S21B" }
+###
+# @name s21b_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s21b@test.com", "password": "pw" }
+###
+# B가 조회 → B 상품만, A의상품 미포함
+GET {{host}}/products/me
+# 기대: 200, "A의상품" 미포함 (본인 것만)
+
+
+### ==== S22 내 상품 리스트 미인증 → 401 ====
+GET {{host}}/products/me
+Cookie:
+# 기대: 401
+
+
+###############################################################################
+# OPTION
+###############################################################################
+
+### ==== S23 옵션 생성 정상 (option-01) ====
+# @name s23_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s23@test.com", "password": "pw", "name": "S23판매자" }
+###
+# @name s23_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s23@test.com", "password": "pw" }
+###
+# @name s23_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "옵션테스트상품", "price": 50000 }
+###
+# @name s23_option
+POST {{host}}/products/{{s23_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "270", "additionalPrice": 5000, "stock": 100 }
+# 기대: 201, { id, description:"270", additionalPrice:5000, stock:100 }
+
+
+### ==== S24 옵션 생성 (추가금액 + 상품금액) <= 0 → 400 ====
+# 상품금액 50000, 추가금액 -50000 → 합 0
+# @name s24_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s23@test.com", "password": "pw" }
+###
+POST {{host}}/products/{{s23_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "합0옵션", "additionalPrice": -50000, "stock": 10 }
+# 기대: 400
+
+
+### ==== S25 옵션 생성 재고 < 0 → 400 (재고 >= 0) ====
+POST {{host}}/products/{{s23_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "음수재고", "additionalPrice": 1000, "stock": -1 }
+# 기대: 400
+
+
+### ==== S26 옵션 생성 - 생성자 아님 → 403 ====
+# @name s26_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s26other@test.com", "password": "pw", "name": "제3자" }
+###
+# @name s26_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s26other@test.com", "password": "pw" }
+###
+POST {{host}}/products/{{s23_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "무단옵션", "additionalPrice": 1000, "stock": 1 }
+# 기대: 403
+
+
+### ==== S27 옵션 생성 미인증 → 401 ====
+POST {{host}}/products/{{s23_product.response.body.id}}/options
+Content-Type: application/json
+Cookie:
+
+{ "description": "x", "additionalPrice": 1000, "stock": 1 }
+# 기대: 401
+
+
+### ==== S28 옵션 수정 정상 (order 없음) (option-02) ====
+# @name s28_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s23@test.com", "password": "pw" }
+###
+PATCH {{host}}/products/{{s23_product.response.body.id}}/options/{{s23_option.response.body.id}}
+Content-Type: application/json
+
+{ "description": "270(리뉴얼)", "additionalPrice": 6000, "stock": 80 }
+# 기대: 200, 값 반영
+
+
+### ==== S29 옵션 수정 (추가금액 + 상품금액) <= 0 → 400 ====
+PATCH {{host}}/products/{{s23_product.response.body.id}}/options/{{s23_option.response.body.id}}
+Content-Type: application/json
+
+{ "additionalPrice": -50000 }
+# 기대: 400 (상품금액 50000 + (-50000) = 0)
+
+
+### ==== S30 옵션 수정 재고 < 0 → 400 ====
+PATCH {{host}}/products/{{s23_product.response.body.id}}/options/{{s23_option.response.body.id}}
+Content-Type: application/json
+
+{ "stock": -5 }
+# 기대: 400
+
+
+### ==== S31 옵션 수정 - 생성자 아님 → 403 ====
+# @name s31_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s26other@test.com", "password": "pw" }
+###
+PATCH {{host}}/products/{{s23_product.response.body.id}}/options/{{s23_option.response.body.id}}
+Content-Type: application/json
+
+{ "description": "무단수정" }
+# 기대: 403
+
+
+### ==== S32 옵션 삭제 정상 (order 없음) → 204 ====
+# 삭제 전용 옵션을 새로 만들어 삭제
+# @name s32_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s23@test.com", "password": "pw" }
+###
+# @name s32_option
+POST {{host}}/products/{{s23_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "삭제될옵션", "additionalPrice": 1000, "stock": 5 }
+###
+DELETE {{host}}/products/{{s23_product.response.body.id}}/options/{{s32_option.response.body.id}}
+# 기대: 204
+
+
+###############################################################################
+# ORDER (핵심)
+###############################################################################
+
+### ==== S33 주문 정상 - 쿠폰 없이 (order-01) ====
+# 구매자
+# @name s33_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s33buyer@test.com", "password": "pw", "name": "S33구매자" }
+###
+# @name s33_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s33buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 200000 }
+# 기대: 200, point 200000
+###
+# 판매자 + 상품/옵션 (재고 10)
+# @name s33_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s33seller@test.com", "password": "pw", "name": "S33판매자" }
+###
+# @name s33_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s33seller@test.com", "password": "pw" }
+###
+# @name s33_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S33상품", "price": 50000 }
+###
+# @name s33_option
+POST {{host}}/products/{{s33_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# 구매자로 재로그인 후 주문 (쿠폰 미사용). 단가 55000 * 1 = 55000
+# @name s33_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s33buyer@test.com", "password": "pw" }
+###
+# @name s33_order
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s33_option.response.body.id}}, "count": 1 } ] }
+# 기대: 201, amount 55000, orderDate(date), orderer.name "S33구매자"
+###
+# 포인트 차감 확인
+GET {{host}}/users/me
+# 기대: point 200000 - 55000 = 145000
+###
+# 재고 차감 확인
+GET {{host}}/products/{{s33_product.response.body.id}}
+# 기대: 해당 옵션 stock 10 - 1 = 9
+
+
+### ==== S34 주문 정상 - 쿠폰 사용 + 쿠폰 소진 확인 (order-01) ====
+# @name s34_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s34buyer@test.com", "password": "pw", "name": "S34구매자" }
+###
+# @name s34_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s34buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 200000 }
+###
+# 가입 쿠폰(1000) id 확보
+# @name s34_coupons
+GET {{host}}/coupons
+# 기대: 200, 회원 가입 쿠폰 1개
+###
+# 판매자/상품/옵션
+# @name s34_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s34seller@test.com", "password": "pw", "name": "S34판매자" }
+###
+# @name s34_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s34seller@test.com", "password": "pw" }
+###
+# @name s34_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S34상품", "price": 50000 }
+###
+# @name s34_option
+POST {{host}}/products/{{s34_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# 구매자 재로그인 후 쿠폰 사용 주문. 55000 - 1000 = 54000
+# @name s34_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s34buyer@test.com", "password": "pw" }
+###
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s34_option.response.body.id}}, "count": 1 } ], "couponId": {{s34_coupons.response.body.0.id}} }
+# 기대: 201, amount 54000 (쿠폰 적용 후)
+###
+# 포인트 차감 확인
+GET {{host}}/users/me
+# 기대: point 200000 - 54000 = 146000
+###
+# 쿠폰 소진 확인 (사용 가능 쿠폰만 조회 → 비어야 함)
+GET {{host}}/coupons
+# 기대: 200, 빈 배열 (사용한 쿠폰은 조회 안 됨)
+
+
+### ==== S35 주문 - 여러 옵션 동시 주문 (order-01) ====
+# @name s35_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s35buyer@test.com", "password": "pw", "name": "S35구매자" }
+###
+# @name s35_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s35buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 500000 }
+###
+# @name s35_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s35seller@test.com", "password": "pw", "name": "S35판매자" }
+###
+# @name s35_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s35seller@test.com", "password": "pw" }
+###
+# @name s35_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S35상품", "price": 10000 }
+###
+# @name s35_opt1
+POST {{host}}/products/{{s35_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "A", "additionalPrice": 0, "stock": 10 }
+###
+# @name s35_opt2
+POST {{host}}/products/{{s35_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "B", "additionalPrice": 5000, "stock": 10 }
+###
+# @name s35_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s35buyer@test.com", "password": "pw" }
+###
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s35_opt1.response.body.id}}, "count": 2 }, { "optionId": {{s35_opt2.response.body.id}}, "count": 1 } ] }
+# 기대: 201, amount = 10000*2 + 15000*1 = 35000
+
+
+### ==== S36 주문 - 동일 옵션 id 개수 합산 (order-01) ====
+# @name s36_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s36buyer@test.com", "password": "pw", "name": "S36구매자" }
+###
+# @name s36_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s36buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 500000 }
+###
+# @name s36_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s36seller@test.com", "password": "pw", "name": "S36판매자" }
+###
+# @name s36_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s36seller@test.com", "password": "pw" }
+###
+# @name s36_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S36상품", "price": 10000 }
+###
+# @name s36_option
+POST {{host}}/products/{{s36_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 0, "stock": 10 }
+###
+# @name s36_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s36buyer@test.com", "password": "pw" }
+###
+# 동일 옵션 id 를 2줄로 전달 (count 3 + 4)
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s36_option.response.body.id}}, "count": 3 }, { "optionId": {{s36_option.response.body.id}}, "count": 4 } ] }
+# 기대: 201, 개수 합산되어 처리 (총 7). amount = 10000*7 = 70000
+###
+GET {{host}}/products/{{s36_product.response.body.id}}
+# 기대: 옵션 stock 10 - 7 = 3
+
+
+### ==== S37 주문 실패 - 옵션 없음(빈 배열) → 400 (옵션 필수) ====
+# @name s37_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s37@test.com", "password": "pw", "name": "S37" }
+###
+# @name s37_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s37@test.com", "password": "pw" }
+###
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [] }
+# 기대: 400 (옵션 필수)
+
+
+### ==== S38 주문 실패 - 포인트 부족 (쿠폰 없음) → 실패 + 상태 불변 ====
+# @name s38_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s38buyer@test.com", "password": "pw", "name": "S38구매자" }
+###
+# @name s38_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s38buyer@test.com", "password": "pw" }
+###
+# 포인트 10000만 충전 (주문가 55000보다 작게)
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 10000 }
+###
+# @name s38_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s38seller@test.com", "password": "pw", "name": "S38판매자" }
+###
+# @name s38_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s38seller@test.com", "password": "pw" }
+###
+# @name s38_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S38상품", "price": 50000 }
+###
+# @name s38_option
+POST {{host}}/products/{{s38_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# @name s38_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s38buyer@test.com", "password": "pw" }
+###
+# 쿠폰 없이 주문. 55000 > 보유 10000
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s38_option.response.body.id}}, "count": 1 } ] }
+# 기대: 400 + message(포인트 부족). 주문 생성 안 됨
+###
+# 포인트 불변 확인
+GET {{host}}/users/me
+# 기대: point 10000 (차감 없음)
+###
+# 재고 불변 확인
+GET {{host}}/products/{{s38_product.response.body.id}}
+# 기대: 옵션 stock 10 (차감 없음)
+
+
+### ==== S39 주문 실패 - 쿠폰 있어도 포인트 부족 → 실패 + 쿠폰 미소진 ====
+# @name s39_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s39buyer@test.com", "password": "pw", "name": "S39구매자" }
+###
+# @name s39_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s39buyer@test.com", "password": "pw" }
+###
+# 포인트 10000. 55000 - 쿠폰1000 = 54000 > 10000
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 10000 }
+###
+# @name s39_coupons
+GET {{host}}/coupons
+# 기대: 가입 쿠폰 1개
+###
+# @name s39_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s39seller@test.com", "password": "pw", "name": "S39판매자" }
+###
+# @name s39_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s39seller@test.com", "password": "pw" }
+###
+# @name s39_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S39상품", "price": 50000 }
+###
+# @name s39_option
+POST {{host}}/products/{{s39_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# @name s39_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s39buyer@test.com", "password": "pw" }
+###
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s39_option.response.body.id}}, "count": 1 } ], "couponId": {{s39_coupons.response.body.0.id}} }
+# 기대: 400 + message(포인트 부족)
+###
+# 쿠폰이 소진되지 않았는지 확인 (실패 시 쿠폰 미사용)
+GET {{host}}/coupons
+# 기대: 가입 쿠폰 여전히 1개 (사용 가능)
+
+
+### ==== S40 주문 실패 - 재고 부족 → 실패 + 상태 불변 ====
+# @name s40_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s40buyer@test.com", "password": "pw", "name": "S40구매자" }
+###
+# @name s40_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s40buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 500000 }
+###
+# @name s40_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s40seller@test.com", "password": "pw", "name": "S40판매자" }
+###
+# @name s40_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s40seller@test.com", "password": "pw" }
+###
+# @name s40_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S40상품", "price": 10000 }
+###
+# 재고 1개짜리 옵션
+# @name s40_option
+POST {{host}}/products/{{s40_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 0, "stock": 1 }
+###
+# @name s40_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s40buyer@test.com", "password": "pw" }
+###
+# 재고 1인데 2개 주문
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s40_option.response.body.id}}, "count": 2 } ] }
+# 기대: 400 + message(재고 부족)
+###
+# 포인트 불변
+GET {{host}}/users/me
+# 기대: point 500000
+###
+# 재고 불변
+GET {{host}}/products/{{s40_product.response.body.id}}
+# 기대: 옵션 stock 1
+
+
+### ==== S41 주문 실패 - 쿠폰 적용 후 금액 <= 0 → 400 (주문 금액 > 0) ====
+# @name s41_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s41buyer@test.com", "password": "pw", "name": "S41구매자" }
+###
+# @name s41_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s41buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 100000 }
+###
+# @name s41_coupons
+GET {{host}}/coupons
+# 기대: 가입 쿠폰 1000
+###
+# @name s41_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s41seller@test.com", "password": "pw", "name": "S41판매자" }
+###
+# @name s41_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s41seller@test.com", "password": "pw" }
+###
+# 단가 1 (상품 1 + 추가금액 0) → 주문가 1, 쿠폰 1000 적용 시 음수
+# @name s41_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S41상품", "price": 1 }
+###
+# @name s41_option
+POST {{host}}/products/{{s41_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 0, "stock": 10 }
+###
+# @name s41_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s41buyer@test.com", "password": "pw" }
+###
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s41_option.response.body.id}}, "count": 1 } ], "couponId": {{s41_coupons.response.body.0.id}} }
+# 기대: 400 (쿠폰 적용 후 금액 1 - 1000 <= 0)
+
+
+### ==== S42 주문 미인증 → 401 ====
+POST {{host}}/orders
+Content-Type: application/json
+Cookie:
+
+{ "productOrders": [ { "optionId": 1, "count": 1 } ] }
+# 기대: 401
+
+
+### ==== S43 구매자 주문 리스트 조회 (order-02) ====
+# S33 구매자 재사용 (본인 주문 존재)
+# @name s43_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s33buyer@test.com", "password": "pw" }
+###
+GET {{host}}/orders
+# 기대: 200, 내 주문 배열. 각 항목에 product/option/count 포함
+
+
+### ==== S44 구매자 주문 리스트 미인증 → 401 ====
+GET {{host}}/orders
+Cookie:
+# 기대: 401
+
+
+### ==== S45 판매자 주문 리스트 조회 (order-03) ====
+# S33 판매자(상품 생성자)로 로그인 후 본인 상품의 주문 조회
+# @name s45_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s33seller@test.com", "password": "pw" }
+###
+GET {{host}}/products/{{s33_product.response.body.id}}/orders
+# 기대: 200, 옵션별 [{ buyer:{email,name}, count }] (구매자 email·name 포함)
+
+
+### ==== S46 판매자 주문 리스트 - 생성자 아님 → 403 ====
+# 제3자 로그인 후 남의 상품 주문 조회
+# @name s46_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s46other@test.com", "password": "pw", "name": "제3자" }
+###
+# @name s46_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s46other@test.com", "password": "pw" }
+###
+GET {{host}}/products/{{s33_product.response.body.id}}/orders
+# 기대: 403
+
+
+### ==== S47 판매자 주문 리스트 미인증 → 401 ====
+GET {{host}}/products/{{s33_product.response.body.id}}/orders
+Cookie:
+# 기대: 401
+
+
+###############################################################################
+# ORDER 존재 시 상품/옵션 수정·삭제 제약 (product-02, option-02)
+###############################################################################
+
+### ==== S48 order 존재 상품: 금액 수정 → 실패 / 설명 수정 → 성공 ====
+# 구매자
+# @name s48_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s48buyer@test.com", "password": "pw", "name": "S48구매자" }
+###
+# @name s48_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s48buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 200000 }
+###
+# 판매자/상품/옵션
+# @name s48_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s48seller@test.com", "password": "pw", "name": "S48판매자" }
+###
+# @name s48_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s48seller@test.com", "password": "pw" }
+###
+# @name s48_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S48상품", "price": 50000 }
+###
+# @name s48_option
+POST {{host}}/products/{{s48_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# 구매자가 주문 → order 발생
+# @name s48_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s48buyer@test.com", "password": "pw" }
+###
+# @name s48_order
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s48_option.response.body.id}}, "count": 1 } ] }
+# 기대: 201
+###
+# 판매자 재로그인
+# @name s48_seller_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s48seller@test.com", "password": "pw" }
+###
+# order 존재 → 금액 수정 시도
+PATCH {{host}}/products/{{s48_product.response.body.id}}
+Content-Type: application/json
+
+{ "price": 60000 }
+# 기대: 403 (order 존재로 금액 수정 불가)
+###
+# 금액 외 항목(설명)은 수정 가능
+PATCH {{host}}/products/{{s48_product.response.body.id}}
+Content-Type: application/json
+
+{ "description": "설명만수정" }
+# 기대: 200
+
+
+### ==== S49 order 존재 옵션: 설명/추가금액 수정 → 실패 / 재고 수정 → 성공 ====
+# (S48 의 판매자/상품/옵션/주문 재사용)
+# @name s49_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s48seller@test.com", "password": "pw" }
+###
+# 추가금액/설명 수정 시도 → 불가
+PATCH {{host}}/products/{{s48_product.response.body.id}}/options/{{s48_option.response.body.id}}
+Content-Type: application/json
+
+{ "additionalPrice": 7000 }
+# 기대: 403 (order 존재로 재고 외 수정 불가)
+###
+# 재고 수정은 가능
+PATCH {{host}}/products/{{s48_product.response.body.id}}/options/{{s48_option.response.body.id}}
+Content-Type: application/json
+
+{ "stock": 50 }
+# 기대: 200 (재고 수정은 허용)
+
+
+### ==== S50 order 존재 옵션: 삭제 → 실패 (403) ====
+DELETE {{host}}/products/{{s48_product.response.body.id}}/options/{{s48_option.response.body.id}}
+# 기대: 403 (order 존재로 삭제 불가)
+
+
+###############################################################################
+# ORDER 취소 (order-04)
+###############################################################################
+
+### ==== S51 주문 취소 정상 - 포인트/재고/쿠폰 복원 + 남은 포인트 반환 ====
+# 구매자
+# @name s51_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s51buyer@test.com", "password": "pw", "name": "S51구매자" }
+###
+# @name s51_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s51buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 200000 }
+###
+# 가입 쿠폰 확보
+# @name s51_coupons
+GET {{host}}/coupons
+###
+# 판매자/상품/옵션 (재고 10)
+# @name s51_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s51seller@test.com", "password": "pw", "name": "S51판매자" }
+###
+# @name s51_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s51seller@test.com", "password": "pw" }
+###
+# @name s51_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S51상품", "price": 50000 }
+###
+# @name s51_option
+POST {{host}}/products/{{s51_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# 구매자 재로그인 후 쿠폰 사용 주문. 55000 - 1000 = 54000
+# @name s51_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s51buyer@test.com", "password": "pw" }
+###
+# @name s51_order
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s51_option.response.body.id}}, "count": 2 } ], "couponId": {{s51_coupons.response.body.0.id}} }
+# 기대: 201, amount = 55000*2 - 1000 = 109000. point 200000-109000=91000
+###
+# 주문 취소
+DELETE {{host}}/orders/{{s51_order.response.body.id}}
+# 기대: 200, { point: 200000 } (포인트 복원 후 남은 포인트 반환)
+###
+# 포인트 복원 확인
+GET {{host}}/users/me
+# 기대: point 200000 (차감분 전액 복원)
+###
+# 쿠폰 복원 확인 (사용 가능 상태로 복원)
+GET {{host}}/coupons
+# 기대: 가입 쿠폰 다시 조회됨 (1개)
+###
+# 재고 복원 확인
+GET {{host}}/products/{{s51_product.response.body.id}}
+# 기대: 옵션 stock 10 (복원)
+
+
+### ==== S52 주문 취소 - 내 주문 아님 → 403 ====
+# 자기완결: 구매자 주문을 새로 만든 뒤, 제3자가 취소 시도
+# @name s52_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s52buyer@test.com", "password": "pw", "name": "S52구매자" }
+###
+# @name s52_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s52buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 200000 }
+###
+# @name s52_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s52seller@test.com", "password": "pw", "name": "S52판매자" }
+###
+# @name s52_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s52seller@test.com", "password": "pw" }
+###
+# @name s52_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S52상품", "price": 50000 }
+###
+# @name s52_option
+POST {{host}}/products/{{s52_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# @name s52_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s52buyer@test.com", "password": "pw" }
+###
+# @name s52_order
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s52_option.response.body.id}}, "count": 1 } ] }
+# 기대: 201
+###
+# 제3자 로그인 후 취소 시도
+# @name s52_other_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s52other@test.com", "password": "pw", "name": "제3자" }
+###
+# @name s52_other_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s52other@test.com", "password": "pw" }
+###
+DELETE {{host}}/orders/{{s52_order.response.body.id}}
+# 기대: 403 (내 주문만 취소 가능). 주문은 삭제되지 않음
+
+
+### ==== S53 주문 취소 미인증 → 401 ====
+# 자기완결: 주문을 새로 만든 뒤 쿠키 없이 취소 시도 (S52 주문은 위에서 미삭제 상태이나
+# 독립성을 위해 별도 주문 생성)
+# @name s53_buyer_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s53buyer@test.com", "password": "pw", "name": "S53구매자" }
+###
+# @name s53_buyer_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s53buyer@test.com", "password": "pw" }
+###
+POST {{host}}/users/me/points
+Content-Type: application/json
+
+{ "point": 200000 }
+###
+# @name s53_seller_signup
+POST {{host}}/users
+Content-Type: application/json
+
+{ "email": "s53seller@test.com", "password": "pw", "name": "S53판매자" }
+###
+# @name s53_seller_login
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s53seller@test.com", "password": "pw" }
+###
+# @name s53_product
+POST {{host}}/products
+Content-Type: application/json
+
+{ "description": "S53상품", "price": 50000 }
+###
+# @name s53_option
+POST {{host}}/products/{{s53_product.response.body.id}}/options
+Content-Type: application/json
+
+{ "description": "opt", "additionalPrice": 5000, "stock": 10 }
+###
+# @name s53_buyer_relogin
+POST {{host}}/users/login
+Content-Type: application/json
+
+{ "email": "s53buyer@test.com", "password": "pw" }
+###
+# @name s53_order
+POST {{host}}/orders
+Content-Type: application/json
+
+{ "productOrders": [ { "optionId": {{s53_option.response.body.id}}, "count": 1 } ] }
+# 기대: 201
+###
+DELETE {{host}}/orders/{{s53_order.response.body.id}}
+Cookie:
+# 기대: 401
