@@ -32,7 +32,7 @@ security:
 
 paths:
   # ────────────────────────────── USER ──────────────────────────────
-  /users:
+  /users/register:
     post:
       tags: [user]
       summary: user-01 회원 가입
@@ -202,7 +202,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/MyProduct'
+                  $ref: '#/components/schemas/Product'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -291,9 +291,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /products/{productId}/options/{optionId}:
+  /options/{optionId}:
     parameters:
-      - $ref: '#/components/parameters/ProductId'
       - $ref: '#/components/parameters/OptionId'
     patch:
       tags: [product]
@@ -387,7 +386,20 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: 보유하지 않은 쿠폰 사용
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 존재하지 않는 옵션 또는 쿠폰
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
+  /orders/buyer:
     get:
       tags: [order]
       summary: order-02 구매자 주문 리스트 조회
@@ -416,14 +428,9 @@ paths:
         - 포인트 / 쿠폰 / 재고를 되돌리고 order를 삭제
         - 쿠폰은 사용 가능 상태로 복원
         - 주문 수정은 불가능(취소만 가능)
-        - 남은 포인트를 반환
       responses:
-        '200':
-          description: 취소 완료, 남은 포인트 반환
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CancelResult'
+        '204':
+          description: 취소 완료 (본문 없음)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -435,7 +442,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /products/{productId}/orders:
+  /orders/{productId}/seller:
     parameters:
       - $ref: '#/components/parameters/ProductId'
     get:
@@ -658,23 +665,6 @@ components:
           $ref: '#/components/schemas/Creator'
       required: [id, description, price, creator]
 
-    MyProduct:
-      type: object
-      description: product-05 응답(생성자 정보 생략)
-      properties:
-        id:
-          type: integer
-          format: int64
-          example: 1
-        description:
-          type: string
-          example: 편안한 러닝화
-        price:
-          type: integer
-          format: int64
-          example: 50000
-      required: [id, description, price]
-
     ProductDetail:
       type: object
       description: product-04 상세 응답 (옵션 리스트 포함)
@@ -870,6 +860,11 @@ components:
           type: string
           format: date
           example: '2026-07-14'
+        coupon:
+          allOf:
+            - $ref: '#/components/schemas/Coupon'
+          nullable: true
+          description: 주문에 사용된 쿠폰 (없으면 null)
       required: [id, productOrders, amount, orderDate]
 
     # ── Seller order list (order-03) ──
@@ -909,14 +904,3 @@ components:
           items:
             $ref: '#/components/schemas/SellerOrderEntry'
       required: [optionId, orders]
-
-    # ── Cancel (order-04) ──
-    CancelResult:
-      type: object
-      properties:
-        point:
-          type: integer
-          format: int64
-          description: 취소 후 남은 포인트
-          example: 15000
-      required: [point]
