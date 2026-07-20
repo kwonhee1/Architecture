@@ -1,20 +1,17 @@
 # Facade Architecture (Application / Domain Service)
 
-Service를 **application service(= facade service)** 와 **domain service** 두 종류로 나누고,
-**도메인 로직은 오직 자기 도메인의 domain service 안에만** 두는 아키텍처입니다.
-계층형에서 Service끼리 서로를 직접 참조하며 도메인 로직이 섞이는 문제를,
-"조합하는 서비스"와 "도메인 로직을 갖는 서비스"를 분리해 푸는 것이 핵심입니다.
+정립된 아키텍처가 아니라, **계층형(Layerd) 구현에서 부딪힌 문제를 풀기 위해 직접 정의한 구조**입니다. 목적은 하나 — **도메인 로직이 섞이는 것을 규칙이 아니라 구조로 막는 것.**
 전체 프로젝트 개요와 공통 스펙은 [루트 README](../README.md)를 참고하세요.
-
-> ⚠️ 이름은 Facade지만 **GoF의 Facade 패턴과는 목적이 다릅니다.** 자세한 규칙은
-> [`architecture.md`](./architecture.md)를 참고하세요.
 
 ---
 
 ## 📜 배경
 
-정립된 아키텍처가 아니라, **계층형(Layerd) 구현에서 부딪힌 문제를 풀기 위해 직접 정의한
-구조**입니다. 목적은 하나 — **domain service를 더욱 보호하는 것.**
+**도메인 로직이 섞이는 것을 구조적으로 막기위한 아키텍쳐**
+
+Service를 **application service(= facade service)** 와 **domain service** 두 종류로 나누고, **도메인 로직은 오직 자기 도메인의 domain service 안에만** 두는 아키텍처입니다.
+
+이름은 Facade지만 **GoF의 Facade 패턴과는 목적이 다릅니다.** 자세한 규칙은 [`architecture.md`](./architecture.md)를 참고하세요.
 
 ### 계층형에서 드러난 문제
 
@@ -115,29 +112,26 @@ controller → facade service → domain service → repository
 
 ## ⚖️ 장점 · 단점
 
+> **도입 이유** — 도메인 로직이 섞이는 것을 규칙이 아니라 구조로 막기 위함.
+
 ### 장점
-- **도메인 로직의 응집** — 도메인 규칙이 반드시 자기 domain service에 모여, 로직이 여러
-  곳으로 새지 않음
-- **결합도 감소** — domain service끼리 참조하지 않으므로 순환 참조가 구조적으로 불가능하고,
-  의존성 방향이 facade → domain service 한 방향으로 유지됨
+- **도메인 로직이 섞이지 않는다** — 각 domain service를 호출하는 주체가 facade 하나뿐이므로,
+  한 도메인의 로직이 다른 도메인의 흐름 안으로 흘러 들어갈 수 없음
+- **domain service는 자기 도메인만 알면 된다** — 다른 도메인의 존재를 몰라도 되고, 필요한
+  값은 파라미터로 요청하기만 하면 되므로(그 값을 구해 오는 것은 facade의 몫) 구현이 편함.
+  순환 참조가 구조적으로 불가능하고 단독 테스트도 쉬움
 - **Service 비대화 완화** — "조합"과 "로직"이 분리되어 계층형의 거대 Service 문제가 줄어듦
 - **낮은 도입 비용** — Aggregate/VO 모델링 없이 서비스 분리만으로 도메인 경계를 확보.
   계층형에서 넘어오기 쉬움
-- **테스트 용이** — domain service는 자기 도메인만 알기에 단독 테스트가 쉬움
 
 ### 단점
-- **facade 비대화** — Service 비대화가 facade 비대화로 옮겨갈 수 있음. 복잡한 유스케이스는
-  facade가 길어짐
+- **도메인 로직과 절차 로직의 경계가 주관적** — 어디까지가 도메인 규칙이고 어디부터가 흐름
+  제어인지 사람마다 판단이 달라, 팀 합의가 없으면 흔들림
+- **facade의 mapping 코드 증가** — domain service가 요구하는 파라미터를 facade가 전부
+  조회해서 넘겨줘야 하므로, 조회·변환 코드가 facade에 쌓임
 - **클래스 수 증가** — 도메인마다 facade + domain service로 나뉘어 파일이 늘고, 단순 CRUD는
   facade가 그냥 통과(pass-through)만 하는 껍데기가 되기 쉬움
 - **facade 간 재사용 불가** — facade끼리 호출 금지라 공통 흐름이 있어도 중복될 수 있음
-- **여전히 빈약한 도메인** — 로직이 엔티티가 아니라 domain service에 있으므로 Anemic Domain
-  문제 자체는 남음 (이 지점을 DDD가 다르게 풂)
-- **경계의 강제력이 규칙에 의존** — 컴파일러가 막아 주지 않아 코드 리뷰로 지켜야 함
-
-> 계층형(Layerd)은 Service끼리 자유롭게 참조하고, DDD는 로직을 도메인 모델로 옮깁니다.
-> Facade는 그 중간에서 **"서비스를 두 종류로 나누는 것만으로 도메인 경계를 지킬 수
-> 있는가"** 를 확인하는 구현입니다.
 
 ---
 
